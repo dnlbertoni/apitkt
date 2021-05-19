@@ -1,0 +1,7 @@
+{
+    "require": {
+        "slim/slim": "3",
+        "slim/flash": "^0.4.0",
+        "dyorg/slim-token-authentication": "^0.2.0"
+    }
+}
