@@ -30,6 +30,7 @@ require_once __DIR__ . '/../app/models/Tickets.php';
 require_once __DIR__ . '/../app/models/Kpi.php';
 require_once __DIR__ . '/../app/models/Flow.php';
 require_once __DIR__ . '/../app/models/Listas.php';
+require_once __DIR__ . '/../app/models/User.php';
 require __DIR__ . '/../app/Auth.php';
 require __DIR__ . '/../app/UnauthorizedException.php';
 
@@ -75,7 +76,7 @@ $authenticator = function($request, TokenAuthentication $tokenAuth){
  * Add token authentication middleware
  */
 $app->add(new TokenAuthentication([
-    'path' =>  ['/api/v1/flow', '/api/v1/tickets/'] ,
+    'path' =>  ['/api/v1/flow' ] ,
     'authenticator' => $authenticator
 ]));
 
@@ -103,6 +104,9 @@ $app->group('/api', function () use ($app) {
         //tag de Ticket
         $app->group('/tickets', function () use ($app) {
             $tkt = new Tickets();
+            $app->get('/findByStatus', function (Request $request, Response $response) use ($app, $tkt) {
+                return $tkt->getTicket( $request, $response); 
+                });            
             $app->get('', function (Request $request, Response $response) use ($app, $tkt) {
                 return $tkt->getTickets( $request, $response); 
             });
@@ -111,7 +115,7 @@ $app->group('/api', function () use ($app) {
                 });            
             $app->get('/{id}', function(Request $request, Response $response) use ($app, $tkt){
                 return $tkt->getTicket( $request, $response); 
-            });
+            });    
         });
         //tag de Flow
         $app->group('/flow', function () use ($app) {
@@ -128,13 +132,25 @@ $app->group('/api', function () use ($app) {
             $app->put('/reactivar', function (Request $request, Response $response) use ($app, $flow) {
                 return $flow->reactivar($request, $response);
             });
+            $app->put('/aceptar', function (Request $request, Response $response) use ($app, $flow) {
+                return $flow->reactivar($request, $response);
+            });            
         });
         //tag de Listas
         $app->group('/listas', function () use ($app) {
             $tkt = new Listas();
-            $app->get('/agentesActivos', function (Request $request, Response $response) use ($app, $tkt) {
+            $app->get('/agentes', function (Request $request, Response $response) use ($app, $tkt) {
                 return $tkt->getAgentesActivos( $request, $response); 
             });
+            $app->get('/tipospedidos', function (Request $request, Response $response) use ($app, $tkt) {
+                return $tkt->getTiposPedidos( $request, $response); 
+            });
+            $app->get('/prioridad', function (Request $request, Response $response) use ($app, $tkt) {
+                return $tkt->getPrioridades( $request, $response); 
+            });  
+            $app->get('/complejidad', function (Request $request, Response $response) use ($app, $tkt) {
+                return $tkt->getComplejidad( $request, $response); 
+            });                        
         });
         //tag KPI
         $app->group('/kpi', function () use ($app) {
@@ -146,6 +162,16 @@ $app->group('/api', function () use ($app) {
                 return $kpi->getKpi( $request, $response); 
             });
         });
+        //tag usuario
+        $app->group('/user', function () use ($app) {
+            $user= new User();
+            $app->post('/login', function(Request $request, Response $response) use ($app, $user){
+                return $user->login( $request, $response); 
+            });        
+            $app->get('/logout', function(Request $request, Response $response) use ($app, $user){
+                return $user->logout( $request, $response); 
+            });
+        });        
     });
 });
 

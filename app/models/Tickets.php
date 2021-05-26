@@ -11,48 +11,28 @@ class Tickets{
     function getTickets(Request $request, Response $response){
 
         $payload  = json_decode($request->getBody(), true);
-        $protecto = ($payload['idtipopedido']==137)?1:0;
         $limit_ini=(isset($payload['pag_ini']))?$payload['pag_ini']:0;
         $limit_fin=(isset($payload['pag_fin']))?$payload['pag_fin']:25;
-
         $fechoy = new DateTime();
-        $fecdes=(isset($_GET['fecdes']))?$_GET['fecdes']:'2020-02-19';
-        $fechas=(isset($_GET['fechas']))?$_GET['fechas']:$fechoy->format('Y-m-d');
-        $sector=(isset($_GET['sector']))?$_GET['sector']:false;
-        $agente=(isset($_GET['agente'])&& trim($_GET['agente']) != '' )?' and ( s.idusuario = '. $_GET['agente']. ' or s.idusuario_potencial = '. $_GET['agente'].' ) ':' ';
-        $estados=(isset($_GET['estados']) && trim($_GET['estados']) != '')?' and s.idestado in (' .$_GET['estados'] .') ':'';
-        $est_default = "
-        AND (
-            s.idestado not IN(25,20)
-            or (
-                    s.idestado in (25,20) AND (
-                        fecalta BETWEEN '%s' AND NOW() OR fecfin BETWEEN '%s' AND NOW()
-                    )
-                ) 
-            )";
-        $est_default = sprintf($est_default,$fecdes,$fechas);
-        $estados=($estados=='')?$est_default:$estados;
-        
-        if(!$sector){
-            $whereSector=' is null';
-        }else{
-            $whereSector = '='.$sector;
-        }
+        $fecdes=(isset($payload['fecdes']))?$payload['fecdes']:'2020-01-01';
+        $fechas=(isset($payload['fechas']))?$payload['fechas']:$fechoy->format('Y-m-d');
+    
         global $pdo;
 
         try {
             $sql="SELECT 
-            date_format(s.fecalta,'%s') Fecha, s.id NroPedido,
+            s.id NroPedido,
+            date_format(s.fecalta,'%d/%m/%Y') fecha_ini, 
+            date_format(s.fecfin,'%d/%m/%Y') fecha_fin, 
             if (s.proyecto = 0 ,p.tipopedido, 'PROYECTO') Tipopedido,
             s.titulo Titulo,
             ifnull(upper (concat(usuempl.apellidos,', ',usuempl.nombres)),'') UsuarioAsignado,
+            s.idestado idEstado,
             v.valor Estado,
-            CONCAT('https://intranet.dilfer.com.ar/modulos/sistemas/index.php?modulo=pedido&comando=mostrar&id=',s.id) Link,
+            CONCAT('http://localhost:8080/api/v1/tickets/',s.id) Link,
             ifnull(upper (concat(usuempl.apellidos,', ',usuempl.nombres)), upper (concat(usupot.apellidos,', ',usupot.nombres)) ) Usuariopotencial,
             vc.valor Complejidad,
-            s.horasestimadas Horasestimadas,
-            s.idproveedor,
-            s.nro_tkt_externo
+            s.horasestimadas Horasestimadas
             FROM sis_pedidos s
             inner join cmx_sectores sect on sect.id=s.idsector
             left JOIN sis_pedidos_datos sd ON sd.idpedido=s.id
@@ -66,16 +46,22 @@ class Tickets{
             left JOIN rrhh_empleados usupot ON usupot.id=upot.idempleado
             left JOIN cmx_valores vc ON vc.id=s.complejidad
             WHERE 1=1
-            AND p.idsector %s 
-            AND p.activo = 1
-            %s
+            AND p.idsector is null
+            AND p.activo = 1 
+            and (fecalta BETWEEN :fecdes AND :fechas OR fecfin BETWEEN :fecdes AND :fechas ) 
             order by s.fecalta desc
-            limit %d, %d
+            limit :pag_ini,:pag_fin 
             ";
-            $sql= sprintf($sql,'%d/%m/%Y', $whereSector,$agente . $estados ,$limit_ini, $limit_fin);
+            //$data = array( , $fechas,$estados, $limit_ini, $limit_fin );
             // Preparamos la consulta a la tabla.
             $stmt = $pdo->prepare($sql);
+            
+            $stmt->bindValue(':fecdes', $fecdes);
+            $stmt->bindValue(':fechas', $fechas);
+            $stmt->bindValue(':pag_ini', $limit_ini ,PDO::PARAM_INT);
+            $stmt->bindValue(':pag_fin', $limit_fin ,PDO::PARAM_INT );
             $stmt->execute();
+            //var_dump($stmt);die();
             // Almacenamos los resultados en un array asociativo.
             $resultados = $stmt->fetchAll(PDO::FETCH_ASSOC);
             // Devolvemos ese array asociativo como un string JSON.
