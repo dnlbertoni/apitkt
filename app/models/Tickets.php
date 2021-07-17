@@ -12,44 +12,68 @@ class Tickets{
 
         $payload  = json_decode($request->getBody(), true);
         $limit_ini=(isset($payload['pag_ini']))?$payload['pag_ini']:0;
-        $limit_fin=(isset($payload['pag_fin']))?$payload['pag_fin']:25;
+        $limit_fin=(isset($payload['pag_fin']))?$payload['pag_fin']:4500;
         $fechoy = new DateTime();
         $fecdes=(isset($payload['fecdes']))?$payload['fecdes']:'2020-01-01';
         $fechas=(isset($payload['fechas']))?$payload['fechas']:$fechoy->format('Y-m-d');
-    
+        $tablero = ($request->getAttribute('tablero')!==null)?$request->getAttribute('tablero'):5;        
         global $pdo;
 
         try {
-            $sql="SELECT 
-            s.id NroPedido,
-            date_format(s.fecalta,'%d/%m/%Y') fecha_ini, 
-            date_format(s.fecfin,'%d/%m/%Y') fecha_fin, 
-            if (s.proyecto = 0 ,p.tipopedido, 'PROYECTO') Tipopedido,
-            s.titulo Titulo,
-            ifnull(upper (concat(usuempl.apellidos,', ',usuempl.nombres)),'') UsuarioAsignado,
-            s.idestado idEstado,
-            v.valor Estado,
-            CONCAT('http://localhost:8080/api/v1/tickets/',s.id) Link,
-            ifnull(upper (concat(usuempl.apellidos,', ',usuempl.nombres)), upper (concat(usupot.apellidos,', ',usupot.nombres)) ) Usuariopotencial,
-            vc.valor Complejidad,
-            s.horasestimadas Horasestimadas
-            FROM sis_pedidos s
-            inner join cmx_sectores sect on sect.id=s.idsector
-            left JOIN sis_pedidos_datos sd ON sd.idpedido=s.id
-            INNER JOIN cmx_valores v ON v.id=s.idestado
-            INNER JOIN cmx_tipospedido p ON p.id=s.idtipopedido
-            INNER JOIN cmx_usuarios cli ON cli.id=s.idcliente
-            INNER JOIN rrhh_empleados cliempl ON cliempl.id=cli.idempleado
-            left JOIN cmx_usuarios usu ON usu.id=s.idusuario
-            left JOIN rrhh_empleados usuempl ON usuempl.id=usu.idempleado
-            left JOIN cmx_usuarios upot ON upot.id=s.idusuario_potencial
-            left JOIN rrhh_empleados usupot ON usupot.id=upot.idempleado
-            left JOIN cmx_valores vc ON vc.id=s.complejidad
-            WHERE 1=1
-            AND p.idsector is null
-            AND p.activo = 1 
-            and (fecalta BETWEEN :fecdes AND :fechas OR fecfin BETWEEN :fecdes AND :fechas ) 
-            order by s.fecalta desc
+            $sql= "
+            select 
+                sk.nombre tablero,
+                skt.nombre equipo,
+                sks.nombre stage
+                from sis_kanban sk  
+                inner join sis_kanban_teams skt on sk.id = skt.idkanban 
+                inner join sis_kanban_stages sks on sk.id=sks.idkanban 
+                WHERE 1=1
+                and sk.id=:tablero
+                and skt.id=1
+            ";
+            $stmt = $pdo->prepare($sql);
+            
+            $stmt->bindValue(':tablero', $tablero ,PDO::PARAM_INT );
+            $stmt->execute();
+            //var_dump($stmt);die();
+            // Almacenamos los resultados en un array asociativo.
+            $stages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $sql="
+            SELECT 
+                    ifnull(sk.id, 0) id_tablero, ifnull(sk.nombre, 'SinConfigurar') tablero, 
+                    ifnull(skt.id,0) id_equipo,ifnull(skt.nombre,'SinConfigurar') equipo,
+                    sks.id id_stage, sks.nombre stage, 
+                    sp.id nro_pedido, 
+                    sp.titulo, 
+                    date_format(sp.fecalta,'%m/%d/%Y') fecha_ini, 
+                    upper (concat(re.apellidos,', ',re.nombres))Agente,
+                    concat('https://intranet.dilfer.com.ar/modulos/rrhh/',re.fotografia) Avatar,                    
+                    sp.idestado idEstado,
+                    est.valor Estado,
+                    prio.valor prioridad,
+                    cpj.valor Complejidad,
+                    sp.horasestimadas Horasestimadas,
+                    date_format(sp.fecfin,'%d/%m/%Y') fecha_fin 
+            FROM sis_pedidos sp 
+            inner join cmx_tipospedido ct on ct.id = sp.idtipopedido 
+            inner join cmx_valores prio on sp.prioridad = prio.id 
+            inner join cmx_valores est on est.id=sp.idestado 
+            left join cmx_valores cpj on cpj.id=sp.complejidad 
+            left join cmx_usuarios cu on cu.id = if(sp.idusuario=0,sp.idusuario_potencial,sp.idusuario)
+            left join rrhh_empleados re on re.id=cu.idempleado 
+            LEFT JOIN sis_kanban_team_tipopedidos sktt on sktt.idtipopedido = sp.idtipopedido
+            left join sis_kanban_teams skt on skt.id = sktt.idkanban_team 
+            left join sis_kanban_stage_estados skse on skse.idestado = sp.idestado 
+            left join sis_kanban_stages sks on sks.id=skse.idkanban_stage 
+            left join sis_kanban sk on sk.id=skt.idkanban and sk.id=sks.idkanban 
+            where 1=1
+                AND ct.activo = 1 
+                and fecalta BETWEEN :fecdes AND :fechas 
+                and (sp.idestado not in (20,25,312) OR CONCAT(YEAR (sp.fecfin),week(sp.fecfin))=(CONCAT(YEAR (:fechas),WEEK(:fechas)))) 
+                and sk.id = :tablero
+            order by sk.nombre , skt.nombre desc ,sks.orden, sp.prioridad desc ,sp.fecalta desc
             limit :pag_ini,:pag_fin 
             ";
             //$data = array( , $fechas,$estados, $limit_ini, $limit_fin );
@@ -60,12 +84,51 @@ class Tickets{
             $stmt->bindValue(':fechas', $fechas);
             $stmt->bindValue(':pag_ini', $limit_ini ,PDO::PARAM_INT);
             $stmt->bindValue(':pag_fin', $limit_fin ,PDO::PARAM_INT );
+            $stmt->bindValue(':tablero', $tablero ,PDO::PARAM_INT );
             $stmt->execute();
             //var_dump($stmt);die();
             // Almacenamos los resultados en un array asociativo.
             $resultados = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $data = array( 'list'=>array());
+            $z_aux = false;
+            $d = array();
+            foreach ($resultados as $r){
+                $x=$r['id_tablero'];
+                $w=$r['id_equipo'];
+                $z=$r['id_stage'];
+                $y=$r['nro_pedido'];
+                if($z!=$z_aux){
+                    if(!empty($d)){
+                        $d['tasks']    = $tasks; 
+                        $d['cantidad'] = count($tasks);
+                        array_push($data['list'],$d);
+                    }
+                    $d = array(
+                        'id'    => $r['id_stage'], 
+                        'name'  => $r['stage'],
+                        'tasks'  => array(),
+                        'cantidad' => 0
+                    );
+                    $tasks = array();
+                    $z_aux=$r['id_stage'];
+                };
+                $task = array(  'id' => $r['nro_pedido'],
+                                'description' => $r['titulo'],
+                                'date'        => $r['fecha_ini'],
+                                'priority'    => $r['prioridad'],
+                                'avatar'      => $r['Avatar']);
+                array_push($tasks, $task);
+            }
+            if(!empty($d)){
+                $d['tasks']=$tasks; 
+                $d['cantidad'] = count($tasks);
+                array_push($data['list'],$d);
+            };
             // Devolvemos ese array asociativo como un string JSON.
-            return $response->withJson($resultados, 200);
+            return $response->withJson($data,200)
+                            ->withHeader('Access-Control-Allow-Origin', '*')
+                            ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+                            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
         } catch (PDOException $e) {
             $datos = array('status' => 'error', 'data' => $e->getMessage());
             return $response->withJson($datos, 500);
