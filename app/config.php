@@ -1,9 +1,9 @@
 <?php
-define('DB_SERVIDOR', '192.168.5.86');
+define('DB_SERVIDOR', '192.168.5.jjj');
 define('DB_PUERTO', '3306');
-define('DB_BASEDATOS', 'intranet');
-define('DB_USUARIO', 'intranet');
-define('DB_PASSWORD', 'GE900Mhz');
+define('DB_BASEDATOS', '');
+define('DB_USUARIO', '');
+define('DB_PASSWORD', '');
 define('API_KEY', '3d524a53c110e4c22463b10ed32cef9d');
 
 /*
